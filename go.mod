@@ -1,3 +1,3 @@
-module github.com/ThankyouEverybody/glt
+module github.com/cafe-old-babe/glt
 
 go 1.20
