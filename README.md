@@ -13,5 +13,9 @@
 ### util
 - [x] `String` convert any to string.
 - [x] `IsImplements` using reflection to determine interface.
+
+v0.1.1 [2023-08-02]
+attempt to resolve the issue of module not being found
+
 ## TODO
 - [ ] `Delay` when optimizing for too many delayed tasks, 'time.After(duration)' may cause memory overflow errors.
