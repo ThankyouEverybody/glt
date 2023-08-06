@@ -12,7 +12,7 @@ import (
 func TestCache(t *testing.T) {
 	es := make([]error, 0)
 	es = append(es, errors.New("abc"))
-	newCache := &SafeMemoryCache{
+	newCache := &SafeMemoryCache[string, string]{
 		IgnoreErrors:  es,
 		ErrorDuration: 0,
 	}
@@ -23,9 +23,9 @@ func TestCache(t *testing.T) {
 			go func(j int) {
 				Key := strconv.Itoa(j)
 				_, _ = newCache.LoadOrStore(context.TODO(), Key,
-					func(ctx context.Context, key any) (v any, err error) {
+					func(ctx context.Context, key string) (v string, err error) {
 						fmt.Printf("gf ---> %v\n", key)
-						return key.(string) + " val", nil
+						return key + " val", nil
 					})
 				wait.Done()
 			}(t)
@@ -35,13 +35,21 @@ func TestCache(t *testing.T) {
 			go func(j int) {
 				Key := strconv.Itoa(j)
 				_, _ = newCache.LoadOrStore(context.TODO(), Key,
-					func(ctx context.Context, key any) (v any, err error) {
+					func(ctx context.Context, key string) (v string, err error) {
 						fmt.Printf("gf ---> %v\n", key)
-						return key.(string) + " val", nil
+						return key + " val", nil
 					})
 				wait.Done()
 			}(t)
 		}
 	}
 	wait.Wait()
+	newCache.Store("abc", "abcVal")
+	newCache.Range(func(k, v string) bool {
+		fmt.Printf("k: %s, v: %s\n", k, v)
+		return true
+	})
+	newCache.Delete(context.TODO(), "abc", func(ctx context.Context, val string) {
+		fmt.Printf("delete abc val: %s\n", val)
+	})
 }

@@ -30,3 +30,19 @@ func TestDelay(t *testing.T) {
 
 	wait.Wait()
 }
+
+func TestDelay1(t *testing.T) {
+	println(time.Now().Format(time.DateTime))
+	after := time.NewTimer(1 * time.Second)
+
+	cancel, _ := context.WithCancel(context.TODO())
+	time.Sleep(2 * time.Second)
+	select {
+	case t := <-after.C:
+		println(t.Format(time.DateTime))
+	case <-cancel.Done():
+		println(cancel.Err().Error())
+	}
+	//cancelFunc()
+
+}

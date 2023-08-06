@@ -15,14 +15,18 @@ type Delay struct {
 	do       base.CtxFunc
 	cancel   context.CancelFunc
 	duration time.Duration
-	status   atomic.Int64 // 0 wait ,1,running,2:after running done,3:after running err 4:cancel
+	status   *atomic.Int64 // 0 wait ,1,running,2:after running done,3:after running err 4:cancel
 }
 
-func NewDelay(duration time.Duration, delayFunc base.CtxFunc,
+func newDelayPtr(duration time.Duration, delayFunc base.CtxFunc,
 	ctx ...context.Context) (task *Delay, err error) {
 
 	if duration <= 0 {
-		err = errors.New("arg is invalid")
+		err = errors.New("duration then less and equals zero")
+		return
+	}
+	if delayFunc == nil {
+		err = errors.New("do func is nil")
 		return
 	}
 	task = new(Delay)
@@ -35,29 +39,44 @@ func NewDelay(duration time.Duration, delayFunc base.CtxFunc,
 	task.ctx, task.cancel = context.WithCancel(task.ctx)
 	task.do = delayFunc
 	task.duration = duration
-	task.status.Store(Wait)
-	go func(task *Delay) {
+	var status atomic.Int64
+	status.Store(Wait)
+	task.status = &status
+	return
+}
+
+func NewDelay(duration time.Duration, delayFunc base.CtxFunc,
+	ctx ...context.Context) (task *Delay, err error) {
+	task, err = newDelayPtr(duration, delayFunc, ctx...)
+	if err != nil {
+		return
+	}
+	go task.doFunc()()
+	return
+}
+
+func (_self *Delay) doFunc() func() {
+	return func() {
 		defer func() {
 			if err := recover(); err != nil {
-				task.status.CompareAndSwap(Running, AfterRunningErr)
+				_self.status.CompareAndSwap(Running, AfterRunningErr)
 				return
 			}
-			if !task.status.CompareAndSwap(Running, AfterRunningDone) {
-				task.status.Store(Cancel)
+			if !_self.status.CompareAndSwap(Running, AfterRunningDone) {
+				_self.status.Store(Cancel)
 			}
 
 		}()
 		select {
-		case <-time.After(task.duration):
-			if task.status.CompareAndSwap(Wait, Running) {
-				task.do(task.ctx)
+		case <-time.After(_self.duration):
+			if _self.status.CompareAndSwap(Wait, Running) {
+				_self.do(_self.ctx)
 			}
-		case <-task.ctx.Done():
+		case <-_self.ctx.Done():
 			return
 		}
+	}
 
-	}(task)
-	return
 }
 
 func (_self *Delay) Cancel() (err error) {

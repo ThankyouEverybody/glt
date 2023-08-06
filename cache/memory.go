@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type SafeMemoryCache struct {
+type SafeMemoryCache[K any, V any] struct {
 	dataMap       sync.Map
 	errData       sync.Map
 	syncMap       sync.Map
@@ -18,14 +18,17 @@ type SafeMemoryCache struct {
 }
 
 // LoadOrStore  cache.GetValIgnoreNullKey not nil , allow gf null
-func (_self *SafeMemoryCache) LoadOrStore(ctx context.Context, key any, gf base.CtxAFuncAE) (val any, err error) {
+func (_self *SafeMemoryCache[K, V]) LoadOrStore(ctx context.Context, key K, gf base.CtxPFuncRE[K, V]) (val V, err error) {
 
 	var exists bool
-	if val, exists = _self.dataMap.Load(key); exists {
+	var loadVal any
+	var errVal any
+	if loadVal, exists = _self.dataMap.Load(key); exists {
+		val = loadVal.(V)
 		return
 	}
-	if val, exists = _self.errData.Load(key); exists {
-		err = val.(error)
+	if errVal, exists := _self.errData.Load(key); exists {
+		err = errVal.(error)
 		return
 	}
 
@@ -44,11 +47,12 @@ func (_self *SafeMemoryCache) LoadOrStore(ctx context.Context, key any, gf base.
 		_self.syncMap.Delete(key)
 	}()
 
-	if val, exists = _self.dataMap.Load(key); exists {
+	if loadVal, exists = _self.dataMap.Load(key); exists {
+		val = loadVal.(V)
 		return
 	}
-	if val, exists = _self.errData.Load(key); exists {
-		err = val.(error)
+	if errVal, exists = _self.errData.Load(key); exists {
+		err = errVal.(error)
 		return
 	}
 	defer func() {
@@ -65,7 +69,7 @@ func (_self *SafeMemoryCache) LoadOrStore(ctx context.Context, key any, gf base.
 
 }
 
-func (_self *SafeMemoryCache) storeErr(key any, err error) {
+func (_self *SafeMemoryCache[K, V]) storeErr(key any, err error) {
 	_self.errData.Store(key, err)
 
 	if nil != _self.IgnoreErrors {
@@ -78,7 +82,7 @@ func (_self *SafeMemoryCache) storeErr(key any, err error) {
 	if _self.ErrorDuration <= 0 {
 		return
 	}
-	go func(_t *SafeMemoryCache, k any) {
+	go func(_t *SafeMemoryCache[K, V], k any) {
 		select {
 		case <-time.After(_t.ErrorDuration):
 			_t.errData.Delete(k)
@@ -88,24 +92,24 @@ func (_self *SafeMemoryCache) storeErr(key any, err error) {
 }
 
 // AsyncClear
-func (_self *SafeMemoryCache) AsyncClear(ctx context.Context, fs ...base.CtxAFunc) *sync.WaitGroup {
+func (_self *SafeMemoryCache[K, V]) AsyncClear(ctx context.Context, fs ...base.CtxTFunc[V]) *sync.WaitGroup {
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(1)
-	go func(wg *sync.WaitGroup, _this *SafeMemoryCache, c context.Context) {
+	go func(wg *sync.WaitGroup, _this *SafeMemoryCache[K, V], c context.Context) {
 		defer wg.Done()
 		_self.errData.Range(func(key, value any) bool {
-			_self.errData.Delete(key)
+			_self.errData.Delete(key.(K))
 			return true
 		})
 		_self.dataMap.Range(func(key, value any) (n bool) {
 			defer func() {
 				n = true
 			}()
-			_this.Delete(c, key, fs...)
+			_this.Delete(c, key.(K), fs...)
 			return
 		})
 		_self.syncMap.Range(func(key, value any) bool {
-			_self.syncMap.Delete(key)
+			_self.syncMap.Delete(key.(K))
 			return true
 		})
 	}(&waitGroup, _self, ctx)
@@ -113,19 +117,19 @@ func (_self *SafeMemoryCache) AsyncClear(ctx context.Context, fs ...base.CtxAFun
 }
 
 // Store
-func (_self *SafeMemoryCache) Store(key any, val any) {
+func (_self *SafeMemoryCache[K, V]) Store(key K, val V) {
 	_self.dataMap.Store(key, val)
 }
 
 // Range
-func (_self *SafeMemoryCache) Range(f func(any, any) bool) {
+func (_self *SafeMemoryCache[K, V]) Range(f func(K, V) bool) {
 	_self.dataMap.Range(func(key, value any) bool {
-		return f(key, value)
+		return f(key.(K), value.(V))
 	})
 }
 
 // Delete
-func (_self *SafeMemoryCache) Delete(ctx context.Context, key any, fs ...base.CtxAFunc) {
+func (_self *SafeMemoryCache[K, V]) Delete(ctx context.Context, key K, fs ...base.CtxTFunc[V]) {
 	defer func() {
 		_self.errData.Delete(key)
 		_self.syncMap.Delete(key)
@@ -136,12 +140,17 @@ func (_self *SafeMemoryCache) Delete(ctx context.Context, key any, fs ...base.Ct
 	}
 	if nil != fs && len(fs) > 0 {
 		for i := range fs {
-			fs[i](ctx, value)
+			fs[i](ctx, value.(V))
 		}
 	}
 }
 
 // Load
-func (_self *SafeMemoryCache) Load(key any) (val any, ok bool) {
-	return _self.dataMap.Load(key)
+func (_self *SafeMemoryCache[K, V]) Load(key K) (val V, ok bool) {
+	var loadVal any
+	if loadVal, ok = _self.dataMap.Load(key); ok {
+		val = loadVal.(V)
+	}
+
+	return
 }
